@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="TBHStats lê seu save do Task Bar Hero automaticamente e transforma dados brutos em estatísticas acionáveis em tempo real. XP/s, ouro/h, ETA de level up e muito mais." />
+  <title>TBHStats — Estatísticas reais para Task Bar Hero</title>
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #070b12;
+      --surface:   #0f1520;
+      --card:      #141c2e;
+      --card-hi:   #1a2540;
+      --border:    #1e2d4a;
+      --accent:    #00d4aa;
+      --accent-dim:#00a88a;
+      --gold:      #f59e0b;
+      --gold-dim:  #d97706;
+      --danger:    #ef4444;
+      --txt:       #e2e8f0;
+      --txt-muted: #7a90b4;
+      --txt-faint: #3d5070;
+      --radius:    12px;
+      --radius-sm: 8px;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      --transition: .25s cubic-bezier(.4,0,.2,1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    ::selection { background: var(--accent); color: var(--bg); }
+
+    /* ─── Scrollbar ─────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+    /* ─── Typography ────────────────────────────────────────────────── */
+    h1, h2, h3, h4 {
+      font-weight: 700;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+    }
+    h1 { font-size: clamp(2.2rem, 5.5vw, 4rem); }
+    h2 { font-size: clamp(1.6rem, 3.5vw, 2.4rem); }
+    h3 { font-size: clamp(1.1rem, 2.5vw, 1.4rem); }
+    p  { color: var(--txt-muted); }
+
+    a { color: var(--accent); text-decoration: none; transition: color var(--transition); }
+    a:hover { color: var(--accent-dim); }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+    /* ─── Layout helpers ────────────────────────────────────────────── */
+    .container { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+    .section    { padding: 100px 0; }
+    .section--sm { padding: 72px 0; }
+
+    .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .label::before {
+      content: '';
+      display: block;
+      width: 20px; height: 2px;
+      background: var(--accent);
+      border-radius: 99px;
+    }
+
+    .section-header { margin-bottom: 56px; }
+    .section-header h2 { margin-bottom: 12px; }
+    .section-header p  { font-size: 1.05rem; max-width: 540px; }
+
+    /* ─── Buttons ───────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      font-size: .95rem;
+      cursor: pointer;
+      border: none;
+      transition: all var(--transition);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn--primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .btn--primary:hover {
+      background: var(--accent-dim);
+      color: var(--bg);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,212,170,.25);
+    }
+    .btn--outline {
+      background: transparent;
+      color: var(--txt);
+      border: 1.5px solid var(--border);
+    }
+    .btn--outline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .btn--lg { padding: 17px 36px; font-size: 1rem; }
+
+    /* ─── Nav ───────────────────────────────────────────────────────── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(7,11,18,.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+    .nav__logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--txt);
+      text-decoration: none;
+      letter-spacing: -.02em;
+    }
+    .nav__logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .nav__logo-icon svg { fill: var(--bg); }
+    .nav__links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+    .nav__links a {
+      font-size: .875rem;
+      font-weight: 600;
+      color: var(--txt-muted);
+      transition: color var(--transition);
+    }
+    .nav__links a:hover { color: var(--txt); }
+    .nav__cta { display: flex; gap: 10px; }
+    .nav__hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+    .nav__hamburger span {
+      display: block;
+      width: 22px; height: 2px;
+      background: var(--txt);
+      border-radius: 99px;
+      transition: all var(--transition);
+    }
+    .nav__mobile-menu {
+      display: none;
+      flex-direction: column;
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border);
+      gap: 12px;
+    }
+    .nav__mobile-menu a {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--txt-muted);
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .nav__mobile-menu a:last-child { border: none; }
+    .nav__mobile-menu.open { display: flex; }
+
+    /* ─── Hero ──────────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      padding: 120px 0 100px;
+      overflow: hidden;
+    }
+    .hero__bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .hero__bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: .35;
+    }
+    .hero__bg-glow {
+      position: absolute;
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      width: 900px; height: 600px;
+      background: radial-gradient(ellipse at center, rgba(0,212,170,.12) 0%, transparent 70%);
+    }
+    .hero__inner {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+    .hero__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,212,170,.1);
+      border: 1px solid rgba(0,212,170,.25);
+      color: var(--accent);
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 99px;
+      margin-bottom: 24px;
+    }
+    .hero__badge-dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .5; transform: scale(1.3); }
+    }
+    .hero h1 { margin-bottom: 20px; }
+    .hero h1 span { color: var(--accent); }
+    .hero__sub {
+      font-size: 1.1rem;
+      line-height: 1.7;
+      color: var(--txt-muted);
+      margin-bottom: 36px;
+      max-width: 500px;
+    }
+    .hero__ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .hero__visual {
+      position: relative;
+    }
+    .dashboard-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+    }
+    .dashboard-card__header {
+      background: var(--surface);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dashboard-card__dots { display: flex; gap: 6px; }
+    .dashboard-card__dots span {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .dashboard-card__dots span:nth-child(1) { background: #ef4444; }
+    .dashboard-card__dots span:nth-child(2) { background: #f59e0b; }
+    .dashboard-card__dots span:nth-child(3) { background: #22c55e; }
+    .dashboard-card__title {
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--txt-muted);
+      margin-left: 4px;
+    }
+    .dashboard-card__body { padding: 20px; }
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+    }
+    .stat-box__label { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--txt-faint); margin-bottom: 4px; }
+    .stat-box__value { font-size: 1.5rem; font-weight: 800; font-family: var(--mono); letter-spacing: -.03em; }
+    .stat-box__value.accent { color: var(--accent); }
+    .stat-box__value.gold   { color: var(--gold); }
+    .stat-box__sub { font-size: .7rem; color: var(--txt-faint); margin-top: 2px; }
+
+    .hero-table { width: 100%; border-collapse: collapse; }
+    .hero-table thead th {
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--txt-faint);
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-table tbody td {
+      font-size: .8rem;
+      padding: 8px 8px;
+      border-bottom: 1px solid rgba(30,45,74,.5);
+      color: var(--txt);
+      font-family: var(--mono);
+    }
+    .hero-table tbody tr:last-child td { border: none; }
+    .hero-table .bar-wrap {
+      background: var(--surface);
+      border-radius: 99px;
+      height: 4px;
+      width: 80px;
+      overflow: hidden;
+    }
+    .hero-table .bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+    }
+    .badge-level {
+      display: inline-block;
+      background: rgba(0,212,170,.12);
+      color: var(--accent);
+      font-size: .65rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+
+    /* ─── How it works ──────────────────────────────────────────────── */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; position: relative; }
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 36px; left: calc(16.66% + 12px);
+      right: calc(16.66% + 12px);
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-dim), var(--accent));
+      opacity: .3;
+    }
+    .step {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+      transition: border-color var(--transition), transform var(--transition);
+    }
+    .step:hover {
+      border-color: var(--accent);
+      transform: translateY(-4px);
+    }
+    .step__num {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: rgba(0,212,170,.12);
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-weight: 900;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .step h3 { margin-bottom: 10px; font-size: 1.05rem; }
+    .step p  { font-size: .875rem; }
+    .step__tag {
+      margin-top: 16px;
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(0,212,170,.08);
+      padding: 4px 12px;
+      border-radius: 99px;
+    }
+
+    /* ─── Features grid ─────────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      transition: border-color var(--transition), transform var(--transition);
+    }
+    .feature-card:hover {
+      border-color: rgba(0,212,170,.4);
+      transform: translateY(-3px);
+    }
+    .feature-card__icon {
+      width: 40px; height: 40px;
+      background: rgba(0,212,170,.1);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 1.2rem;
+    }
+    .feature-card h3 { font-size: 1rem; margin-bottom: 8px; }
+    .feature-card p  { font-size: .85rem; }
+
+    /* ─── Metrics showcase ──────────────────────────────────────────── */
+    .metrics-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: center;
+    }
+    .metrics-list { display: flex; flex-direction: column; gap: 16px; }
+    .metric-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      transition: border-color var(--transition);
+    }
+    .metric-item:hover { border-color: rgba(0,212,170,.35); }
+    .metric-item__val {
+      font-size: 1.8rem;
+      font-weight: 900;
+      font-family: var(--mono);
+      letter-spacing: -.03em;
+      color: var(--accent);
+      min-width: 100px;
+    }
+    .metric-item__val.gold { color: var(--gold); }
+    .metric-item__info strong { display: block; font-size: .9rem; color: var(--txt); margin-bottom: 2px; }
+    .metric-item__info span  { font-size: .8rem; color: var(--txt-muted); }
+
+    .metrics-side {
+      position: relative;
+    }
+    .metrics-terminal {
+      background: #030508;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      font-family: var(--mono);
+      font-size: .8rem;
+      line-height: 1.8;
+      color: var(--txt-muted);
+      overflow: hidden;
+    }
+    .metrics-terminal .t-header {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .metrics-terminal .t-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--txt-faint);
+    }
+    .t-line { display: block; }
+    .t-key  { color: var(--txt-faint); }
+    .t-val  { color: var(--accent); }
+    .t-val-gold { color: var(--gold); }
+    .t-val-blue { color: #60a5fa; }
+    .t-comment  { color: #374151; }
+    .t-cursor {
+      display: inline-block;
+      width: 8px; height: .9em;
+      background: var(--accent);
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ─── Benefits ──────────────────────────────────────────────────── */
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .benefit-card {
+      padding: 28px 24px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--card);
+      position: relative;
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .benefit-card:hover { border-color: rgba(245,158,11,.3); }
+    .benefit-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--gold), transparent);
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    .benefit-card:hover::before { opacity: 1; }
+    .benefit-card__num {
+      font-size: 2.5rem;
+      font-weight: 900;
+      font-family: var(--mono);
+      color: rgba(245,158,11,.12);
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    .benefit-card h3 { font-size: 1rem; margin-bottom: 8px; color: var(--txt); }
+    .benefit-card p  { font-size: .85rem; }
+
+    /* ─── Credibility ───────────────────────────────────────────────── */
+    .credibility {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .cred-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+    }
+    .cred-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      gap: 16px;
+    }
+    .cred-card__icon {
+      flex-shrink: 0;
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: rgba(0,212,170,.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+    .cred-card h3 { font-size: .9rem; margin-bottom: 4px; }
+    .cred-card p  { font-size: .8rem; }
+
+    /* ─── Copy highlight band ───────────────────────────────────────── */
+    .copy-band {
+      padding: 64px 0;
+      overflow: hidden;
+    }
+    .copy-band__inner {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .copy-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      opacity: 0;
+      transform: translateX(-20px);
+      transition: opacity .5s, transform .5s;
+    }
+    .copy-item.visible {
+      opacity: 1;
+      transform: none;
+    }
+    .copy-item__icon {
+      flex-shrink: 0;
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+    .copy-item p {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--txt);
+      margin: 0;
+    }
+
+    /* ─── FAQ ───────────────────────────────────────────────────────── */
+    .faq-list { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+    .faq-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .faq-item.open { border-color: rgba(0,212,170,.4); }
+    .faq-question {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: .95rem;
+      gap: 16px;
+      user-select: none;
+    }
+    .faq-question:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .faq-chevron {
+      flex-shrink: 0;
+      width: 20px; height: 20px;
+      color: var(--txt-faint);
+      transition: transform var(--transition), color var(--transition);
+    }
+    .faq-item.open .faq-chevron { transform: rotate(180deg); color: var(--accent); }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .3s cubic-bezier(.4,0,.2,1), padding .3s;
+      padding: 0 24px;
+    }
+    .faq-item.open .faq-answer {
+      max-height: 200px;
+      padding-bottom: 20px;
+    }
+    .faq-answer p { font-size: .9rem; }
+
+    /* ─── Final CTA ─────────────────────────────────────────────────── */
+    .final-cta {
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+      padding: 120px 0;
+    }
+    .final-cta__glow {
+      position: absolute;
+      bottom: -200px; left: 50%;
+      transform: translateX(-50%);
+      width: 800px; height: 600px;
+      background: radial-gradient(ellipse at center, rgba(0,212,170,.1) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .final-cta h2 { margin-bottom: 16px; }
+    .final-cta p  { font-size: 1.05rem; max-width: 480px; margin: 0 auto 36px; }
+    .final-cta__ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .os-note {
+      margin-top: 16px;
+      font-size: .8rem;
+      color: var(--txt-faint);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* ─── Footer ────────────────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+    }
+    .footer__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .footer__brand { display: flex; align-items: center; gap: 10px; }
+    .footer__brand span { font-size: .875rem; color: var(--txt-muted); }
+    .footer__links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+    .footer__links a { font-size: .85rem; color: var(--txt-muted); }
+    .footer__links a:hover { color: var(--txt); }
+    .footer__badge {
+      font-size: .75rem;
+      font-weight: 700;
+      background: rgba(245,158,11,.1);
+      border: 1px solid rgba(245,158,11,.25);
+      color: var(--gold);
+      padding: 4px 12px;
+      border-radius: 99px;
+    }
+
+    /* ─── Scroll animation ──────────────────────────────────────────── */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity .55s ease, transform .55s ease;
+    }
+    .fade-up.visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ─── Responsive ────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .hero__inner    { grid-template-columns: 1fr; gap: 48px; }
+      .metrics-grid   { grid-template-columns: 1fr; }
+      .benefits-grid  { grid-template-columns: 1fr 1fr; }
+      .steps          { grid-template-columns: 1fr; }
+      .steps::before  { display: none; }
+      .nav__links, .nav__cta { display: none; }
+      .nav__hamburger { display: flex; }
+    }
+    @media (max-width: 600px) {
+      .section        { padding: 64px 0; }
+      .benefits-grid  { grid-template-columns: 1fr; }
+      .hero            { padding: 72px 0 64px; }
+      .stat-row        { grid-template-columns: 1fr 1fr; }
+      .hero__ctas      { flex-direction: column; }
+      .hero__ctas .btn { text-align: center; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Navigation ─────────────────────────────────────────────────── -->
+  <header class="nav" role="banner">
+    <div class="container nav__inner">
+      <a href="#" class="nav__logo" aria-label="TBHStats home">
+        <span class="nav__logo-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        </span>
+        TBHStats
+      </a>
+      <nav aria-label="Navegação principal">
+        <ul class="nav__links">
+          <li><a href="#como-funciona">Como funciona</a></li>
+          <li><a href="#recursos">Recursos</a></li>
+          <li><a href="#metricas">Métricas</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </nav>
+      <div class="nav__cta">
+        <a href="#download" class="btn btn--primary">Baixar para Windows</a>
+      </div>
+      <button class="nav__hamburger" aria-label="Abrir menu" aria-expanded="false" id="hamburger">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <nav class="nav__mobile-menu" id="mobileMenu" aria-label="Menu mobile">
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#recursos">Recursos</a>
+      <a href="#metricas">Métricas</a>
+      <a href="#beneficios">Benefícios</a>
+      <a href="#faq">FAQ</a>
+      <a href="#download" class="btn btn--primary" style="margin-top:8px;text-align:center;justify-content:center;">Baixar para Windows</a>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- ─── Hero ──────────────────────────────────────────────────────── -->
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="hero__bg-grid"></div>
+        <div class="hero__bg-glow"></div>
+      </div>
+      <div class="container">
+        <div class="hero__inner">
+          <div class="hero__content">
+            <div class="hero__badge">
+              <span class="hero__badge-dot" aria-hidden="true"></span>
+              Versão beta disponível para Windows
+            </div>
+            <h1 id="hero-heading">
+              Veja sua progressão<br />
+              de <span>verdade</span> no<br />
+              Task Bar Hero.
+            </h1>
+            <p class="hero__sub">
+              TBHStats lê seu save automaticamente, calcula ganhos por fase, mostra evolução dos heróis em tempo real e entrega métricas claras para você evoluir mais rápido.
+            </p>
+            <div class="hero__ctas">
+              <a href="#download" class="btn btn--primary btn--lg" aria-label="Baixar TBHStats para Windows">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Baixar para Windows
+              </a>
+              <a href="#recursos" class="btn btn--outline btn--lg">
+                Ver recursos
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="hero__visual" aria-label="Prévia do dashboard TBHStats" role="img">
+            <div class="dashboard-card">
+              <div class="dashboard-card__header">
+                <div class="dashboard-card__dots" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </div>
+                <span class="dashboard-card__title">TBHStats · Dashboard</span>
+              </div>
+              <div class="dashboard-card__body">
+                <div class="stat-row">
+                  <div class="stat-box">
+                    <div class="stat-box__label">Stage atual</div>
+                    <div class="stat-box__value accent" id="stageVal">4 820</div>
+                    <div class="stat-box__sub">Stage máx: 5 104</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="stat-box__label">XP / hora</div>
+                    <div class="stat-box__value accent" id="xphVal">1,24M</div>
+                    <div class="stat-box__sub">↑ 12% vs. sessão anterior</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="stat-box__label">Ouro / hora</div>
+                    <div class="stat-box__value gold" id="goldVal">38,6K</div>
+                    <div class="stat-box__sub">Sessão: 1h 42m</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="stat-box__label">Próx. lv. ETA</div>
+                    <div class="stat-box__value accent" id="etaVal">~14m</div>
+                    <div class="stat-box__sub">Arqueiro · lv 38</div>
+                  </div>
+                </div>
+
+                <table class="hero-table" aria-label="Heróis da equipe atual">
+                  <thead>
+                    <tr>
+                      <th scope="col">Herói</th>
+                      <th scope="col">Nv.</th>
+                      <th scope="col">XP</th>
+                      <th scope="col">Progresso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Arqueiro</td>
+                      <td><span class="badge-level">38</span></td>
+                      <td>82 400</td>
+                      <td><div class="bar-wrap"><div class="bar-fill" style="width:76%"></div></div></td>
+                    </tr>
+                    <tr>
+                      <td>Mago</td>
+                      <td><span class="badge-level">31</span></td>
+                      <td>44 100</td>
+                      <td><div class="bar-wrap"><div class="bar-fill" style="width:48%"></div></div></td>
+                    </tr>
+                    <tr>
+                      <td>Guerreiro</td>
+                      <td><span class="badge-level">27</span></td>
+                      <td>19 750</td>
+                      <td><div class="bar-wrap"><div class="bar-fill" style="width:33%"></div></div></td>
+                    </tr>
+                    <tr>
+                      <td>Assassino</td>
+                      <td><span class="badge-level">24</span></td>
+                      <td>8 320</td>
+                      <td><div class="bar-wrap"><div class="bar-fill" style="width:21%"></div></div></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── How it works ──────────────────────────────────────────────── -->
+    <section class="section" id="como-funciona" aria-labelledby="how-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Como funciona</div>
+          <h2 id="how-heading">Três passos. Sem configuração manual.</h2>
+          <p>Configuração rápida, leitura automática do save. O TBHStats detecta, descriptografa e exibe — tudo sem você precisar fazer nada.</p>
+        </div>
+        <div class="steps">
+          <div class="step fade-up">
+            <div class="step__num" aria-hidden="true">1</div>
+            <h3>Detecta o save</h3>
+            <p>O app localiza automaticamente o arquivo <code>SaveFile_Live.es3</code> do Task Bar Hero e monitora mudanças em tempo real.</p>
+            <span class="step__tag">Automático</span>
+          </div>
+          <div class="step fade-up" style="transition-delay:.1s">
+            <div class="step__num" aria-hidden="true">2</div>
+            <h3>Descriptografa</h3>
+            <p>Descobre e aplica a chave AES necessária (com múltiplas estratégias de detecção) e extrai os dados do save de forma local e segura.</p>
+            <span class="step__tag">Local &amp; seguro</span>
+          </div>
+          <div class="step fade-up" style="transition-delay:.2s">
+            <div class="step__num" aria-hidden="true">3</div>
+            <h3>Mostra as métricas</h3>
+            <p>Apresenta XP/s, ouro/hora, progresso dos heróis, histórico de fases e estimativas de level up — tudo em tempo real.</p>
+            <span class="step__tag">Tempo real</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Features ──────────────────────────────────────────────────── -->
+    <section class="section section--sm" id="recursos" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);" aria-labelledby="feat-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Recursos</div>
+          <h2 id="feat-heading">Tudo o que você precisa para acompanhar sua progressão.</h2>
+          <p>Sem adivinhação: veja números reais da sua sessão.</p>
+        </div>
+        <div class="features-grid">
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">💾</div>
+            <h3>Leitura automática do save</h3>
+            <p>Detecta e lê o <code>SaveFile_Live.es3</code> sem ação manual. Atualiza somente quando o arquivo muda.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🔑</div>
+            <h3>Detecção automática de chave</h3>
+            <p>Descobre a senha AES em múltiplas etapas: senha embutida, cache local, leitura de <code>resources.assets</code> e captura via Frida IL2CPP como fallback.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">📊</div>
+            <h3>Dashboard de conta</h3>
+            <p>Versão do save, tempo total jogado, stage atual e stage máximo atingido — visão completa da conta em um painel.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">⚔️</div>
+            <h3>Monitoramento de heróis</h3>
+            <p>Acompanhe nome, nível, XP atual e barra de progresso de cada herói da equipe ativa em tempo real.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">⚡</div>
+            <h3>Ganho por sessão e por fase</h3>
+            <p>Acompanhe XP e ouro por fase em tempo real: XP/s, XP/min, XP/h, ouro/s, ouro/min e ouro/h calculados da sessão atual.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">📋</div>
+            <h3>Histórico de fases</h3>
+            <p>Registra conclusões de fase com controle de limite de histórico, permitindo análise de progresso ao longo do tempo.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">⏱️</div>
+            <h3>ETA de level up</h3>
+            <p>Descubra quando seu herói realmente vai upar. Estimativa calculada com base na taxa de XP atual da sessão.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🔄</div>
+            <h3>Auto-refresh inteligente</h3>
+            <p>Intervalo de refresh configurável. O app atualiza somente quando o save muda, evitando leituras desnecessárias.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🔁</div>
+            <h3>Reset separado de métricas</h3>
+            <p>Resete stats, tempo de sessão e histórico de forma independente para análises limpas em cada sessão.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🌐</div>
+            <h3>Suporte multilíngue</h3>
+            <p>Interface disponível em Português (PT-BR), Inglês e Espanhol. Troque o idioma sem reiniciar o app.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🎨</div>
+            <h3>Tema claro e escuro</h3>
+            <p>Alterne entre modo escuro e claro conforme sua preferência, sem impacto nas métricas ou na sessão.</p>
+          </div>
+
+          <div class="feature-card fade-up">
+            <div class="feature-card__icon" aria-hidden="true">🖥️</div>
+            <h3>Interface desktop leve</h3>
+            <p>Construída com CustomTkinter. Focada em leitura rápida, sem sobrecarga de sistema. Executável para Windows 10/11.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Metrics showcase ───────────────────────────────────────────── -->
+    <section class="section metrics-section" id="metricas" aria-labelledby="metrics-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Métricas em destaque</div>
+          <h2 id="metrics-heading">Números que você realmente precisa ver.</h2>
+          <p>Feito para jogadores que querem otimizar progressão — sem achismos, só dados.</p>
+        </div>
+        <div class="metrics-grid">
+          <div class="metrics-list">
+            <div class="metric-item fade-up">
+              <div class="metric-item__val" id="xps-counter">4,1</div>
+              <div class="metric-item__info">
+                <strong>XP por segundo</strong>
+                <span>Taxa calculada sobre a sessão atual</span>
+              </div>
+            </div>
+            <div class="metric-item fade-up">
+              <div class="metric-item__val" id="xph-counter">14,8K</div>
+              <div class="metric-item__info">
+                <strong>XP por hora</strong>
+                <span>Projeção baseada no ritmo da sessão</span>
+              </div>
+            </div>
+            <div class="metric-item fade-up gold">
+              <div class="metric-item__val gold" id="gh-counter">38,6K</div>
+              <div class="metric-item__info">
+                <strong>Ouro por hora</strong>
+                <span>Acumulado desde o início da sessão</span>
+              </div>
+            </div>
+            <div class="metric-item fade-up">
+              <div class="metric-item__val" id="eta-counter">~14m</div>
+              <div class="metric-item__info">
+                <strong>ETA próximo level</strong>
+                <span>Tempo estimado para o herói principal</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="metrics-side fade-up" aria-label="Exemplo de saída do TBHStats no terminal">
+            <div class="metrics-terminal" role="region" aria-label="Dados de sessão do TBHStats">
+              <div class="t-header" aria-hidden="true">
+                <div class="t-dot"></div>
+                <div class="t-dot"></div>
+                <div class="t-dot"></div>
+              </div>
+              <span class="t-line"><span class="t-comment"># TBHStats · Dados da Sessão</span></span>
+              <span class="t-line">&nbsp;</span>
+              <span class="t-line"><span class="t-key">save_version     </span><span class="t-val">87</span></span>
+              <span class="t-line"><span class="t-key">stage_current    </span><span class="t-val">4820</span></span>
+              <span class="t-line"><span class="t-key">stage_max        </span><span class="t-val">5104</span></span>
+              <span class="t-line"><span class="t-key">time_played      </span><span class="t-val-blue">126h 44m</span></span>
+              <span class="t-line">&nbsp;</span>
+              <span class="t-line"><span class="t-comment"># Sessão atual</span></span>
+              <span class="t-line"><span class="t-key">xp_per_sec       </span><span class="t-val">4.1</span></span>
+              <span class="t-line"><span class="t-key">xp_per_min       </span><span class="t-val">246</span></span>
+              <span class="t-line"><span class="t-key">xp_per_hour      </span><span class="t-val">14 760</span></span>
+              <span class="t-line"><span class="t-key">gold_per_hour    </span><span class="t-val-gold">38 600</span></span>
+              <span class="t-line">&nbsp;</span>
+              <span class="t-line"><span class="t-comment"># Herói ativo</span></span>
+              <span class="t-line"><span class="t-key">hero             </span><span class="t-val">Arqueiro lv.38</span></span>
+              <span class="t-line"><span class="t-key">xp_progress      </span><span class="t-val">82 400 / 108 200</span></span>
+              <span class="t-line"><span class="t-key">eta_level_up     </span><span class="t-val">~14m 07s</span></span>
+              <span class="t-line">&nbsp;</span>
+              <span class="t-line"><span class="t-key">last_update      </span><span class="t-val-blue">há 2s</span></span>
+              <span class="t-line"><span class="t-comment">_</span><span class="t-cursor" aria-hidden="true"></span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Copy highlight band ────────────────────────────────────────── -->
+    <section class="copy-band section--sm" aria-label="Pontos-chave do TBHStats">
+      <div class="container">
+        <div class="copy-band__inner">
+          <div class="copy-item">
+            <span class="copy-item__icon" aria-hidden="true">✦</span>
+            <p>Sem adivinhação: veja números reais da sua sessão.</p>
+          </div>
+          <div class="copy-item">
+            <span class="copy-item__icon" aria-hidden="true">✦</span>
+            <p>Acompanhe XP e ouro por fase em tempo real.</p>
+          </div>
+          <div class="copy-item">
+            <span class="copy-item__icon" aria-hidden="true">✦</span>
+            <p>Descubra quando seu herói realmente vai upar.</p>
+          </div>
+          <div class="copy-item">
+            <span class="copy-item__icon" aria-hidden="true">✦</span>
+            <p>Configuração rápida, leitura automática do save.</p>
+          </div>
+          <div class="copy-item">
+            <span class="copy-item__icon" aria-hidden="true">✦</span>
+            <p>Feito para jogadores que querem otimizar progressão.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Benefits ──────────────────────────────────────────────────── -->
+    <section class="section" id="beneficios" style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);" aria-labelledby="ben-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Benefícios práticos</div>
+          <h2 id="ben-heading">Decisões melhores, progressão mais rápida.</h2>
+          <p>Chega de chutar quais heróis priorizar ou quanto tempo falta para o próximo nível.</p>
+        </div>
+        <div class="benefits-grid">
+          <div class="benefit-card fade-up">
+            <div class="benefit-card__num" aria-hidden="true">01</div>
+            <h3>Composição de equipe mais inteligente</h3>
+            <p>Veja o progresso real de cada herói e decida com dados quem priorizar para maximizar o ganho de XP por sessão.</p>
+          </div>
+          <div class="benefit-card fade-up" style="transition-delay:.1s">
+            <div class="benefit-card__num" aria-hidden="true">02</div>
+            <h3>Farm otimizado por fase</h3>
+            <p>Identifique quais fases rendem mais ouro e XP por hora e ajuste sua estratégia para extrair o máximo de cada sessão.</p>
+          </div>
+          <div class="benefit-card fade-up" style="transition-delay:.2s">
+            <div class="benefit-card__num" aria-hidden="true">03</div>
+            <h3>Progressão sem surpresas</h3>
+            <p>Com o ETA calculado em tempo real, você sabe exatamente quanto tempo falta para o próximo level up — sem especulações.</p>
+          </div>
+          <div class="benefit-card fade-up">
+            <div class="benefit-card__num" aria-hidden="true">04</div>
+            <h3>Análise de sessão por sessão</h3>
+            <p>Resete as métricas quando quiser para comparar sessões diferentes e entender em que condições você performa melhor.</p>
+          </div>
+          <div class="benefit-card fade-up" style="transition-delay:.1s">
+            <div class="benefit-card__num" aria-hidden="true">05</div>
+            <h3>Histórico de evolução de stage</h3>
+            <p>Registre suas conclusões de fase e veja sua evolução ao longo do tempo, identificando picos e quedas de desempenho.</p>
+          </div>
+          <div class="benefit-card fade-up" style="transition-delay:.2s">
+            <div class="benefit-card__num" aria-hidden="true">06</div>
+            <h3>Zero tempo perdido em setup</h3>
+            <p>Abra o TBHStats, ele detecta o save e já mostra as métricas. Sem configuração de caminhos, sem chaves manuais, sem complicação.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Credibility ────────────────────────────────────────────────── -->
+    <section class="section credibility" id="credibilidade" aria-labelledby="cred-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Base técnica</div>
+          <h2 id="cred-heading">Leitura local, segura e precisa.</h2>
+          <p>O TBHStats opera inteiramente no seu computador. Nenhum dado é enviado para servidores externos.</p>
+        </div>
+        <div class="cred-grid">
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">🔒</div>
+            <div>
+              <h3>Leitura 100% local</h3>
+              <p>Todos os dados são lidos diretamente do arquivo de save no seu disco. Nenhuma conexão externa é feita.</p>
+            </div>
+          </div>
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">🛡️</div>
+            <div>
+              <h3>Somente leitura</h3>
+              <p>O TBHStats nunca escreve ou modifica seu save. Ele apenas lê, descriptografa e exibe — seu save permanece intacto.</p>
+            </div>
+          </div>
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">🔍</div>
+            <div>
+              <h3>Detecção automática de chave</h3>
+              <p>Múltiplas estratégias de detecção da chave AES garantem compatibilidade sem configuração manual em diferentes versões do jogo.</p>
+            </div>
+          </div>
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">⚙️</div>
+            <div>
+              <h3>Atualização inteligente</h3>
+              <p>O app verifica se o save mudou antes de processar. Zero processamento desnecessário, uso mínimo de CPU.</p>
+            </div>
+          </div>
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">📦</div>
+            <div>
+              <h3>Sem dependências externas</h3>
+              <p>Distribuído como executável para Windows 10/11. Sem instalação de runtime ou bibliotecas adicionais.</p>
+            </div>
+          </div>
+          <div class="cred-card fade-up">
+            <div class="cred-card__icon" aria-hidden="true">🔐</div>
+            <div>
+              <h3>Descriptografia local AES-128-CBC</h3>
+              <p>Utiliza PBKDF2-SHA1 para derivar chave e IV, replicando fielmente o mecanismo de criptografia do ES3.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── FAQ ───────────────────────────────────────────────────────── -->
+    <section class="section" id="faq" style="background:var(--surface);border-top:1px solid var(--border);" aria-labelledby="faq-heading">
+      <div class="container">
+        <div class="section-header fade-up">
+          <div class="label">Dúvidas frequentes</div>
+          <h2 id="faq-heading">Perguntas comuns antes de instalar.</h2>
+        </div>
+        <div class="faq-list" role="list">
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-question" aria-expanded="false" aria-controls="faq-a1" id="faq-q1">
+              Preciso configurar algo manualmente?
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="faq-answer" id="faq-a1" role="region" aria-labelledby="faq-q1">
+              <p>Não. O TBHStats localiza automaticamente o arquivo de save e descobre a chave de descriptografia sem intervenção manual. Basta abrir o app com o Task Bar Hero instalado no seu computador.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-question" aria-expanded="false" aria-controls="faq-a2" id="faq-q2">
+              Funciona com o jogo fechado ou aberto?
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="faq-answer" id="faq-a2" role="region" aria-labelledby="faq-q2">
+              <p>Funciona com o jogo aberto ou fechado, desde que o arquivo <code>SaveFile_Live.es3</code> exista no disco. Para métricas de sessão em tempo real, o jogo precisa estar rodando e gravando o save periodicamente.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-question" aria-expanded="false" aria-controls="faq-a3" id="faq-q3">
+              O app altera ou interfere no meu save?
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="faq-answer" id="faq-a3" role="region" aria-labelledby="faq-q3">
+              <p>Não. O TBHStats opera exclusivamente em modo de leitura. Ele nunca escreve, modifica ou interfere no arquivo de save. Seu progresso no jogo está completamente seguro.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-question" aria-expanded="false" aria-controls="faq-a4" id="faq-q4">
+              Precisa de conexão com a internet para funcionar?
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="faq-answer" id="faq-a4" role="region" aria-labelledby="faq-q4">
+              <p>Não. O TBHStats funciona completamente offline. Toda a leitura, descriptografia e cálculo de métricas ocorre localmente no seu computador. Nenhuma requisição externa é feita durante o uso.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-question" aria-expanded="false" aria-controls="faq-a5" id="faq-q5">
+              Em quais sistemas operacionais funciona?
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div class="faq-answer" id="faq-a5" role="region" aria-labelledby="faq-q5">
+              <p>O TBHStats é distribuído como executável para Windows 10 e Windows 11. Suporte para outros sistemas não está disponível na versão atual.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Final CTA ──────────────────────────────────────────────────── -->
+    <section class="final-cta" id="download" aria-labelledby="cta-heading">
+      <div class="final-cta__glow" aria-hidden="true"></div>
+      <div class="container" style="position:relative;z-index:1;">
+        <div class="label" style="justify-content:center;">Disponível agora</div>
+        <h2 id="cta-heading">Comece a ver<br />sua progressão real.</h2>
+        <p>Instale o TBHStats, abra o app e tenha em segundos todas as métricas do seu Task Bar Hero — de graça, sem cadastro.</p>
+        <div class="final-cta__ctas">
+          <a href="#" class="btn btn--primary btn--lg" aria-label="Baixar TBHStats para Windows">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Baixar para Windows
+          </a>
+          <a href="https://github.com" class="btn btn--outline btn--lg" aria-label="Ver código no GitHub">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.167 6.839 9.49.5.09.682-.217.682-.482 0-.237-.009-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.744 0 .267.18.577.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
+            Ver no GitHub
+          </a>
+        </div>
+        <p class="os-note" aria-label="Requisitos do sistema">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+          Windows 10 / 11 · Versão beta
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── Footer ────────────────────────────────────────────────────────── -->
+  <footer class="footer" role="contentinfo">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <span class="nav__logo-icon" aria-hidden="true" style="width:24px;height:24px;border-radius:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="#070b12"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        </span>
+        <span>TBHStats &mdash; Leitor de save para Task Bar Hero</span>
+      </div>
+      <ul class="footer__links" aria-label="Links do rodapé">
+        <li><a href="https://github.com">GitHub</a></li>
+        <li><a href="https://github.com/issues">Reportar bug</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+      <span class="footer__badge">Beta</span>
+    </div>
+  </footer>
+
+  <script>
+    /* ─── Hamburger menu ─────────────────────────────────────────── */
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobileMenu');
+    hamburger.addEventListener('click', () => {
+      const open = mobileMenu.classList.toggle('open');
+      hamburger.setAttribute('aria-expanded', open);
+    });
+    mobileMenu.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+      });
+    });
+
+    /* ─── FAQ accordion ──────────────────────────────────────────── */
+    document.querySelectorAll('.faq-question').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item   = btn.closest('.faq-item');
+        const isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach(i => {
+          i.classList.remove('open');
+          i.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+        });
+        if (!isOpen) {
+          item.classList.add('open');
+          btn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    });
+
+    /* ─── Scroll-reveal ──────────────────────────────────────────── */
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-up, .copy-item').forEach(el => observer.observe(el));
+
+    /* ─── Copy items stagger ─────────────────────────────────────── */
+    document.querySelectorAll('.copy-item').forEach((el, i) => {
+      el.style.transitionDelay = `${i * 0.08}s`;
+    });
+
+    /* ─── Animated counter utility ───────────────────────────────── */
+    function animateValue(el, from, to, duration, suffix = '', prefix = '') {
+      const start = performance.now();
+      const isFloat = !Number.isInteger(to);
+      function tick(now) {
+        const p = Math.min((now - start) / duration, 1);
+        const ease = p < .5 ? 2*p*p : -1+(4-2*p)*p;
+        const val = from + (to - from) * ease;
+        el.textContent = prefix + (isFloat ? val.toFixed(1) : Math.round(val).toLocaleString('pt-BR')) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+
+    /* ─── Animate hero dashboard numbers on load ─────────────────── */
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        animateValue(document.getElementById('stageVal'),    0, 4820, 1200);
+        animateValue(document.getElementById('xphVal'),      0, 1.24, 1400, 'M');
+        animateValue(document.getElementById('goldVal'),     0, 38.6, 1400, 'K');
+      }, 400);
+    });
+
+    /* ─── Animate metrics section counters on scroll ─────────────── */
+    const metricsSection = document.querySelector('.metrics-section');
+    let metricsDone = false;
+    const metObs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !metricsDone) {
+        metricsDone = true;
+        animateValue(document.getElementById('xps-counter'),  0,  4.1, 1200);
+        animateValue(document.getElementById('xph-counter'),  0, 14.8, 1200, 'K');
+        animateValue(document.getElementById('gh-counter'),   0, 38.6, 1200, 'K');
+        metObs.disconnect();
+      }
+    }, { threshold: 0.3 });
+    if (metricsSection) metObs.observe(metricsSection);
+
+    /* ─── Smooth active nav highlight ────────────────────────────── */
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav__links a');
+    const ioNav = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(a => {
+            a.style.color = '';
+            if (a.getAttribute('href') === '#' + entry.target.id) {
+              a.style.color = 'var(--txt)';
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-40% 0px -55% 0px' });
+    sections.forEach(s => ioNav.observe(s));
+  </script>
+</body>
+</html>
